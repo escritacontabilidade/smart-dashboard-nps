@@ -2,5 +2,4 @@ streamlit
 gspread
 pandas
 google-auth
-wordcloud
-matplotlib
+plotly
