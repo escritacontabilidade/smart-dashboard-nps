@@ -2,10 +2,9 @@ import streamlit as st
 import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
-# 1. FUNÇÃO DE CONEXÃO (Mantenha como está)
+# 1. CONEXÃO (Não mexer aqui)
 def buscar_dados():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds_dict = dict(st.secrets["gcp_service_account"])
@@ -14,69 +13,105 @@ def buscar_dados():
     client = gspread.authorize(credentials)
     sh = client.open_by_key(st.secrets["SHEET_ID"])
     wks = sh.worksheet("respostas")
-    return pd.DataFrame(wks.get_all_records())
+    df = pd.DataFrame(wks.get_all_records())
+    
+    # Organizar nomes das colunas por posição para não dar erro
+    df.columns.values[0] = "timestamp"
+    df.columns.values[1] = "nome"
+    df.columns.values[2] = "empresa"
+    df.columns.values[3] = "nps_nota"
+    df.columns.values[4] = "nps_motivo"
+    # Critérios Gerais (Cols 6 a 10)
+    crit_nomes = ['Clareza', 'Prazos', 'Comunicação', 'Cordialidade', 'Custo']
+    for i, nome in enumerate(crit_nomes):
+        df.columns.values[5 + i] = nome
+    
+    # Setores (Cols 11 a 28 - Notas nas ímpares)
+    setores = ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
+    for i, nome in enumerate(setores):
+        df.columns.values[10 + (i*2)] = f"Nota_{nome}"
+        
+    return df
 
-# CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(page_title="Dashboard NPS", layout="wide")
+# CONFIGURAÇÃO VISUAL
+st.set_page_config(page_title="Escrita Contabilidade", layout="wide")
 
-# 2. ADICIONANDO SUA LOGO
-# Substitua o link abaixo pelo link direto da sua imagem ou use uma imagem padrão
-st.image("https://cdn-icons-png.flaticon.com/512/3112/3112946.png", width=100) 
-st.title("📊 Dashboard de Satisfação do Cliente")
+# ESTILO CSS (Para criar os cards brancos e bordas)
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 40px; color: #1f3b5c; }
+    .stMetric { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 2px 2px 5px #eeeeee; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Carregar os dados
 try:
     df = buscar_dados()
     
-    # MÁGICA PARA EVITAR O ERRO: Vamos renomear as colunas por POSIÇÃO e não por NOME
-    # Assim, não importa o que você escreveu no topo da planilha, o Python vai saber a ordem
-    df.columns.values[3] = "nps_nota"      # Coluna 4 (Índice 3 no Python)
-    df.columns.values[4] = "nps_motivo"    # Coluna 5 (Índice 4 no Python)
+    # --- SIDEBAR (Barra Lateral) ---
+    with st.sidebar:
+        # Coloque o link da sua logo real aqui
+        st.image("https://raw.githubusercontent.com/sua-logo-aqui.png", width=150) 
+        st.title("Filtros")
+        setor_selecionado = st.selectbox("Filtrar por Setor", ["Todos"] + ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS'])
+        st.divider()
+        st.write("### Exportar Dados")
+        st.button("📥 Baixar em Excel")
+
+    # --- CABEÇALHO ---
+    st.title("📊 Dashboard de Performance")
     
-    # Ajustando as notas dos setores (Colunas 11 a 28, pulando as sugestões)
+    # Cálculos Principais
+    total_resp = len(df)
+    nps_medio = pd.to_numeric(df['nps_nota'], errors='coerce').mean()
+    # Média operacional (média dos 5 critérios gerais)
+    crit_colunas = ['Clareza', 'Prazos', 'Comunicação', 'Cordialidade', 'Custo']
+    for c in crit_colunas: df[c] = pd.to_numeric(df[c], errors='coerce')
+    media_operacional = df[crit_colunas].mean().mean()
+
+    # Cards Superiores
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total de Respostas", total_resp)
+    c2.metric("NPS Médio", f"{nps_medio:.1f}")
+    c3.metric("Média Operacional", f"{media_operacional:.1f}")
+
+    # --- DESEMPENHO POR INDICADOR (Gráficos de Rosca) ---
+    st.markdown("### 🎯 Desempenho por Indicador")
+    cols_indicadores = st.columns(5)
+    
+    for i, crit in enumerate(crit_colunas):
+        nota = df[crit].mean()
+        with cols_indicadores[i]:
+            fig = go.Figure(go.Pie(
+                values=[nota, 10-nota],
+                labels=[crit, ""],
+                hole=.7,
+                marker_colors=['#1f3b5c', '#eeeeee'],
+                textinfo='none',
+                showlegend=False
+            ))
+            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=150, 
+                              annotations=[dict(text=f'{nota:.1f}', x=0.5, y=0.5, font_size=20, showarrow=False)])
+            st.write(f"<p style='text-align:center'><b>{crit}</b></p>", unsafe_allow_html=True)
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+    # --- MÉDIAS POR DEPARTAMENTO (Gráfico de Barras) ---
+    st.divider()
+    st.markdown("### 🏢 Médias por Departamento")
     setores_nomes = ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
-    # Mapeamos as colunas de 2 em 2 começando da 10 (Python conta do zero)
-    for i, nome in enumerate(setores_nomes):
-        df.columns.values[10 + (i*2)] = f"Nota_{nome}"
-
-    # Converter para número
-    df['nps_nota'] = pd.to_numeric(df['nps_nota'], errors='coerce')
-
-    # EXIBIÇÃO DO NPS
-    total = len(df)
-    promotores = len(df[df['nps_nota'] >= 9])
-    detratores = len(df[df['nps_nota'] <= 6])
-    nps_calc = ((promotores - detratores) / total) * 100 if total > 0 else 0
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("NPS Geral", f"{nps_calc:.1f}")
-    col2.metric("Total de Respostas", total)
-    col3.info("Zona de Qualidade: 50 a 74")
-
-    # GRÁFICO DE SETORES
-    st.divider()
-    st.subheader("⭐ Médias por Setor")
-    colunas_notas_setores = [f"Nota_{n}" for n in setores_nomes]
-    for col in colunas_notas_setores:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+    colunas_setores = [f"Nota_{s}" for s in setores_nomes]
+    for c in colunas_setores: df[c] = pd.to_numeric(df[c], errors='coerce')
     
-    medias = df[colunas_notas_setores].mean()
-    # Limpando o nome para exibir no gráfico
-    medias.index = setores_nomes
-    st.bar_chart(medias)
+    medias_setores = df[colunas_setores].mean()
+    medias_setores.index = setores_nomes
+    
+    st.bar_chart(medias_setores, color="#1f3b5c")
 
-    # NUVEM DE PALAVRAS
+    # --- ÚLTIMOS FEEDBACKS (Tabela) ---
     st.divider()
-    st.subheader("💬 O que mais comentam")
-    comentarios = " ".join(str(v) for v in df['nps_motivo'].dropna() if v != "")
-    if comentarios:
-        nuvem = WordCloud(background_color="white", width=800, height=300).generate(comentarios)
-        fig, ax = plt.subplots()
-        ax.imshow(nuvem, interpolation='bilinear')
-        ax.axis("off")
-        st.pyplot(fig)
-    else:
-        st.write("Sem comentários suficientes para gerar a nuvem.")
+    st.markdown("### 💬 Últimos Feedbacks dos Clientes")
+    # Seleciona apenas algumas colunas para mostrar na tabela igual ao seu print
+    tabela_df = df[['timestamp', 'nome', 'nps_nota', 'nps_motivo']].tail(10)
+    st.dataframe(tabela_df, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Ops! Algo deu errado. Verifique se o nome da aba na sua planilha é 'respostas'. Erro: {e}")
+    st.error(f"Erro ao carregar layout: {e}")
