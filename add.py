@@ -85,7 +85,7 @@ try:
         )
 
     # --- TÍTULO ---
-    st.markdown("# 📊 Dashboard de Performance")
+    st.markdown("# 📊 Dashboard de Performance NPS Smart")
     
     # Conversão de números
     df['nps_nota'] = pd.to_numeric(df['nps_nota'], errors='coerce')
