@@ -27,7 +27,7 @@ def buscar_dados():
     for i, nome in enumerate(crit_nomes):
         df.columns.values[5 + i] = nome
     
-    setores = ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
+    setores = ['Contábil', 'Folha', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
     for i, nome in enumerate(setores):
         df.columns.values[10 + (i*2)] = f"Nota_{nome}"
         
