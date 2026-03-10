@@ -4,7 +4,7 @@ import pandas as pd
 from google.oauth2.service_account import Credentials
 import plotly.graph_objects as go
 
-# 1. CONEXÃO (Não mexer aqui)
+# 1. CONEXÃO
 def buscar_dados():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds_dict = dict(st.secrets["gcp_service_account"])
@@ -15,103 +15,103 @@ def buscar_dados():
     wks = sh.worksheet("respostas")
     df = pd.DataFrame(wks.get_all_records())
     
-    # Organizar nomes das colunas por posição para não dar erro
+    # Organizar nomes das colunas por posição
     df.columns.values[0] = "timestamp"
     df.columns.values[1] = "nome"
     df.columns.values[2] = "empresa"
     df.columns.values[3] = "nps_nota"
     df.columns.values[4] = "nps_motivo"
-    # Critérios Gerais (Cols 6 a 10)
+    
     crit_nomes = ['Clareza', 'Prazos', 'Comunicação', 'Cordialidade', 'Custo']
     for i, nome in enumerate(crit_nomes):
         df.columns.values[5 + i] = nome
     
-    # Setores (Cols 11 a 28 - Notas nas ímpares)
     setores = ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
     for i, nome in enumerate(setores):
         df.columns.values[10 + (i*2)] = f"Nota_{nome}"
         
     return df
 
-# CONFIGURAÇÃO VISUAL
 st.set_page_config(page_title="Escrita Contabilidade", layout="wide")
 
-# ESTILO CSS (Para criar os cards brancos e bordas)
+# ESTILO CSS
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 40px; color: #1f3b5c; }
-    .stMetric { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 2px 2px 5px #eeeeee; }
+    [data-testid="stMetricValue"] { font-size: 35px; color: #1f3b5c; }
+    .stMetric { background-color: white; padding: 15px; border-radius: 10px; border: 1px solid #e6e9ef; }
+    [data-testid="stSidebar"] { background-color: #f8f9fb; }
     </style>
     """, unsafe_allow_html=True)
 
 try:
     df = buscar_dados()
     
-    # --- SIDEBAR (Barra Lateral) ---
+    # --- BARRA LATERAL (SIDEBAR) ---
     with st.sidebar:
-        # Coloque o link da sua logo real aqui
-        st.image("https://raw.githubusercontent.com/sua-logo-aqui.png", width=150) 
+        # Tenta carregar a logo se você subiu ela no GitHub com este nome exato
+        try:
+            st.image("Logo Escrita.png", width=200)
+        except:
+            st.write("### ESCRITA CONTABILIDADE")
+            
         st.title("Filtros")
-        setor_selecionado = st.selectbox("Filtrar por Setor", ["Todos"] + ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS'])
+        setores_lista = ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
+        setor_selecionado = st.selectbox("Filtrar por Setor", ["Todos"] + setores_lista)
+        
         st.divider()
-        st.write("### Exportar Dados")
+        st.write("### Ações")
         st.button("📥 Baixar em Excel")
 
-    # --- CABEÇALHO ---
-    st.title("📊 Dashboard de Performance")
+    # --- TÍTULO ---
+    st.markdown("# 📊 Dashboard de Performance")
     
-    # Cálculos Principais
+    # Cálculos
+    df['nps_nota'] = pd.to_numeric(df['nps_nota'], errors='coerce')
     total_resp = len(df)
-    nps_medio = pd.to_numeric(df['nps_nota'], errors='coerce').mean()
-    # Média operacional (média dos 5 critérios gerais)
+    nps_medio = df['nps_nota'].mean()
+    
     crit_colunas = ['Clareza', 'Prazos', 'Comunicação', 'Cordialidade', 'Custo']
     for c in crit_colunas: df[c] = pd.to_numeric(df[c], errors='coerce')
     media_operacional = df[crit_colunas].mean().mean()
 
     # Cards Superiores
     c1, c2, c3 = st.columns(3)
-    c1.metric("Total de Respostas", total_resp)
-    c2.metric("NPS Médio", f"{nps_medio:.1f}")
-    c3.metric("Média Operacional", f"{media_operacional:.1f}")
+    with c1: st.metric("Total de Respostas", total_resp)
+    with c2: st.metric("NPS Médio", f"{nps_medio:.1f}")
+    with c3: st.metric("Média Operacional", f"{media_operacional:.1f}")
 
-    # --- DESEMPENHO POR INDICADOR (Gráficos de Rosca) ---
+    # --- INDICADORES (Gráficos de Rosca) ---
     st.markdown("### 🎯 Desempenho por Indicador")
-    cols_indicadores = st.columns(5)
+    cols = st.columns(5)
     
     for i, crit in enumerate(crit_colunas):
         nota = df[crit].mean()
-        with cols_indicadores[i]:
+        with cols[i]:
             fig = go.Figure(go.Pie(
-                values=[nota, 10-nota],
-                labels=[crit, ""],
+                values=[nota, 10-nota if nota <=10 else 0],
                 hole=.7,
                 marker_colors=['#1f3b5c', '#eeeeee'],
-                textinfo='none',
-                showlegend=False
+                textinfo='none', showlegend=False
             ))
-            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=150, 
-                              annotations=[dict(text=f'{nota:.1f}', x=0.5, y=0.5, font_size=20, showarrow=False)])
-            st.write(f"<p style='text-align:center'><b>{crit}</b></p>", unsafe_allow_html=True)
+            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=140, width=140,
+                              annotations=[dict(text=f'{nota:.1f}', x=0.5, y=0.5, font_size=18, showarrow=False)])
+            st.write(f"<p style='text-align:center; font-size:14px;'><b>{crit}</b></p>", unsafe_allow_html=True)
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-    # --- MÉDIAS POR DEPARTAMENTO (Gráfico de Barras) ---
+    # --- MÉDIAS POR DEPARTAMENTO ---
     st.divider()
     st.markdown("### 🏢 Médias por Departamento")
-    setores_nomes = ['Contábil', 'Folha', 'Recrutamento', 'Legal', 'Financeiro', 'BPO', 'Recepção', 'Estrutura', 'CS']
-    colunas_setores = [f"Nota_{s}" for s in setores_nomes]
+    colunas_setores = [f"Nota_{s}" for s in setores_lista]
     for c in colunas_setores: df[c] = pd.to_numeric(df[c], errors='coerce')
     
     medias_setores = df[colunas_setores].mean()
-    medias_setores.index = setores_nomes
-    
+    medias_setores.index = setores_lista
     st.bar_chart(medias_setores, color="#1f3b5c")
 
-    # --- ÚLTIMOS FEEDBACKS (Tabela) ---
+    # --- TABELA ---
     st.divider()
-    st.markdown("### 💬 Últimos Feedbacks dos Clientes")
-    # Seleciona apenas algumas colunas para mostrar na tabela igual ao seu print
-    tabela_df = df[['timestamp', 'nome', 'nps_nota', 'nps_motivo']].tail(10)
-    st.dataframe(tabela_df, use_container_width=True)
+    st.markdown("### 💬 Últimos Feedbacks")
+    st.dataframe(df[['timestamp', 'nome', 'nps_nota', 'nps_motivo']].tail(10), use_container_width=True)
 
 except Exception as e:
-    st.error(f"Erro ao carregar layout: {e}")
+    st.error(f"Aguarde a instalação dos pacotes ou verifique o erro: {e}")
