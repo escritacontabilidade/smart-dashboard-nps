@@ -3,6 +3,7 @@ import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import plotly.graph_objects as go
+from io import BytesIO
 
 # 1. CONEXÃO
 def buscar_dados():
@@ -32,6 +33,13 @@ def buscar_dados():
         
     return df, setores
 
+# Função auxiliar para converter o Excel em memória (sem salvar arquivo no servidor)
+def converter_para_excel(df_download):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_download.to_excel(writer, index=False, sheet_name='Respostas')
+    return output.getvalue()
+
 st.set_page_config(page_title="Escrita Contabilidade", layout="wide")
 
 # ESTILO CSS
@@ -59,13 +67,22 @@ try:
         
         # APLICAÇÃO DO FILTRO
         if setor_selecionado != "Todos":
-            # Filtra apenas quem deu nota para aquele setor específico (coluna Nota_Setor não vazia)
             col_setor = f"Nota_{setor_selecionado}"
             df = df[df[col_setor] != ""].copy()
 
         st.divider()
         st.write("### Ações")
-        st.button("📥 Baixar em Excel")
+        
+        # --- LÓGICA DO BOTÃO DE DOWNLOAD ---
+        # Preparamos o arquivo Excel com os dados (respeitando o filtro selecionado)
+        excel_data = converter_para_excel(df)
+        
+        st.download_button(
+            label="📥 Baixar em Excel",
+            data=excel_data,
+            file_name=f"pesquisa_satisfacao_{setor_selecionado}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     # --- TÍTULO ---
     st.markdown("# 📊 Dashboard de Performance")
@@ -103,7 +120,6 @@ try:
             fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=140, 
                               annotations=[dict(text=f'{nota_exibicao:.1f}', x=0.5, y=0.5, font_size=18, showarrow=False)])
             st.write(f"<p style='text-align:center; font-size:14px;'><b>{crit}</b></p>", unsafe_allow_html=True)
-            # AQUI ESTÁ A CORREÇÃO: Adicionamos o 'key' único
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"grafico_{crit}")
 
     # --- MÉDIAS POR DEPARTAMENTO ---
